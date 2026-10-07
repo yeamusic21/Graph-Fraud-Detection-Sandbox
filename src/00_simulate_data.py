@@ -408,54 +408,385 @@ def simulate_provider_referrals(providers):
     """
     Create provider-to-provider referral relationships.
 
-    Normal providers have relatively random referral relationships.
+    We want to simulate two different behaviors:
 
-    Fraudulent providers are much more likely to refer to other
-    providers in the same fraud ring.
+    NORMAL PROVIDERS
+    ----------------
+    A normal provider can refer patients to other providers
+    throughout the provider population.
 
-    This is particularly important for the graph model because it
-    gives us an explicit Provider -> Provider network.
+    FRAUDULENT PROVIDERS
+    --------------------
+    A fraudulent provider preferentially refers patients to
+    other fraudulent providers.
+
+    This is important because it creates a suspicious network
+    in the graph.
+
+    Highly dense & non-random networks are one of the most reliable indicators of organized fraud rings
+    
+    See https://blogs.iq.harvard.edu/network_analysi which graph analysis revealed
+    - Some providers were using a list of patients for billing purposes without seeing the patients. 
+    - Patients were being paid cash to ride a bus from clinic to clinic and receive unnecessary tests.
+
+    For example:
+
+        Normal world:
+
+            P10 ---> P83
+            P42 ---> P17
+            P91 ---> P64
+
+        Fraud ring:
+
+            P1 ---> P2
+             ^       |
+             |       v
+            P5 <--- P3
+             ^       |
+             |       v
+            P4 <-----
+
+    The fraud providers repeatedly connect to one another.
+
+    Later, we can ask Neo4j:
+
+        "Which providers have unusually strong connections
+         to the same group of providers?"
+
+    and hopefully identify the fraud ring.
     """
 
+    # ================================================================
+    # STEP 1
+    # Get a NumPy array containing EVERY provider ID.
+    # ================================================================
+
+    # For example, this might look like:
+    #
+    # [
+    #     "P0001",
+    #     "P0002",
+    #     "P0003",
+    #     ...
+    #     "P0200"
+    # ]
+
     provider_ids = providers["provider_id"].to_numpy()
+
+
+    # ================================================================
+    # STEP 2
+    # Get ONLY the providers that are known to be fraudulent.
+    # ================================================================
+
+    # Remember:
+    #
+    # providers["is_fraud"]
+    #
+    # is a True/False column.
+    #
+    # For example:
+    #
+    # provider_id    is_fraud
+    # -----------------------
+    # P0001          True
+    # P0002          True
+    # P0003          True
+    # P0004          True
+    # P0005          True
+    # P0006          False
+    # P0007          False
+    #
+    # The .loc[...] part says:
+    #
+    # "Give me the rows where is_fraud is True."
 
     fraud_provider_ids = providers.loc[
         providers["is_fraud"],
         "provider_id",
     ].to_numpy()
 
+
+    # ================================================================
+    # STEP 3
+    # Create an empty list.
+    # ================================================================
+
+    # We will add one dictionary to this list for every referral
+    # relationship we create.
+    #
+    # Eventually it will look something like:
+    #
+    # [
+    #     {
+    #         "provider_id": "P0001",
+    #         "referred_provider_id": "P0003"
+    #     },
+    #     {
+    #         "provider_id": "P0002",
+    #         "referred_provider_id": "P0005"
+    #     }
+    # ]
+
     referrals = []
+
+
+    # ================================================================
+    # STEP 4
+    # Loop through every provider.
+    # ================================================================
+
+    # provider_id will contain ONE provider at a time.
+    #
+    # First iteration:
+    #
+    #     provider_id = "P0001"
+    #
+    # Next iteration:
+    #
+    #     provider_id = "P0002"
+    #
+    # etc.
 
     for provider_id in provider_ids:
 
-        # Number of referrals made by this provider.
+
+        # ============================================================
+        # STEP 5
+        # Decide how many referrals this provider makes.
+        # ============================================================
+
+        # rng.integers(1, 5) generates a random integer from:
+        #
+        #     1, 2, 3, or 4
+        #
+        # So every provider will make between 1 and 4 referrals.
+
         n_referrals = rng.integers(1, 5)
+
+
+        # ============================================================
+        # STEP 6
+        # Create each referral.
+        # ============================================================
+
+        # If n_referrals is 3, this loop runs 3 times.
+        #
+        # Each iteration creates one provider-to-provider
+        # referral relationship.
 
         for _ in range(n_referrals):
 
-            is_fraud_provider = provider_id in fraud_provider_ids
+
+            # ========================================================
+            # STEP 7
+            # Determine whether THIS provider is fraudulent.
+            # ========================================================
+
+            # fraud_provider_ids contains something like:
+            #
+            # ["P0001", "P0002", "P0003", "P0004", "P0005"]
+            #
+            # So this asks:
+            #
+            # "Is the provider we are currently processing
+            #  one of the fraudulent providers?"
+            #
+            # The result is either:
+            #
+            #     True
+            #
+            # or
+            #
+            #     False
+
+            is_fraud_provider = (
+                provider_id in fraud_provider_ids
+            )
+
+
+            # ========================================================
+            # STEP 8
+            # Decide who this provider is allowed to refer to.
+            # ========================================================
 
             if is_fraud_provider:
 
-                # Fraudulent providers preferentially refer
-                # to other fraudulent providers.
+                # ----------------------------------------------------
+                # THIS IS A FRAUDULENT PROVIDER
+                # ----------------------------------------------------
+                #
+                # We want fraudulent providers to preferentially
+                # refer to OTHER fraudulent providers.
+                #
+                # Suppose:
+                #
+                # fraud_provider_ids =
+                #
+                # ["P0001", "P0002", "P0003", "P0004", "P0005"]
+                #
+                # and the current provider is:
+                #
+                # provider_id = "P0001"
+                #
+                # We do NOT want P0001 referring to itself.
+                #
+                # Therefore, our possible targets should be:
+                #
+                # ["P0002", "P0003", "P0004", "P0005"]
+
+
+                # ----------------------------------------------------
+                # First:
+                #
+                # fraud_provider_ids != provider_id
+                #
+                # compares EVERY fraudulent provider ID against
+                # the CURRENT provider ID.
+                #
+                # Example:
+                #
+                # fraud_provider_ids:
+                #
+                # ["P0001", "P0002", "P0003", "P0004", "P0005"]
+                #
+                # Current provider:
+                #
+                # "P0001"
+                #
+                # The comparison produces:
+                #
+                # [False, True, True, True, True]
+                #
+                # In other words:
+                #
+                # P0001 == P0001 -> False
+                # P0002 != P0001 -> True
+                # P0003 != P0001 -> True
+                # P0004 != P0001 -> True
+                # P0005 != P0001 -> True
+                #
+                # This is called a BOOLEAN MASK.
+                # ----------------------------------------------------
+
                 possible_targets = fraud_provider_ids[
                     fraud_provider_ids != provider_id
                 ]
 
+                # The result is:
+                #
+                # ["P0002", "P0003", "P0004", "P0005"]
+                #
+                # So the fraudulent provider can refer to another
+                # fraudulent provider, but cannot refer to itself.
+
+
             else:
 
-                # Normal providers refer randomly.
+                # ----------------------------------------------------
+                # THIS IS A NORMAL PROVIDER
+                # ----------------------------------------------------
+                #
+                # A normal provider can refer to any OTHER provider.
+                #
+                # We again need to make sure the provider cannot
+                # refer to itself.
+                #
+                # For example, if:
+                #
+                # provider_id = "P0100"
+                #
+                # then P0100 can refer to:
+                #
+                # P0001
+                # P0002
+                # P0003
+                # ...
+                # P0099
+                # P0101
+                # ...
+                # P0200
+                #
+                # but NOT P0100.
+
+
+                # ----------------------------------------------------
+                # provider_ids != provider_id
+                #
+                # creates a boolean mask across ALL providers.
+                #
+                # Example:
+                #
+                # provider_ids =
+                #
+                # ["P0001", "P0002", "P0003", "P0004"]
+                #
+                # Current provider:
+                #
+                # "P0003"
+                #
+                # Comparison:
+                #
+                # ["P0001" != "P0003",
+                #  "P0002" != "P0003",
+                #  "P0003" != "P0003",
+                #  "P0004" != "P0003"]
+                #
+                # produces:
+                #
+                # [True, True, False, True]
+                #
+                # NumPy then uses that True/False array to select
+                # the values we want.
+                # ----------------------------------------------------
+
                 possible_targets = provider_ids[
                     provider_ids != provider_id
                 ]
 
-            if len(possible_targets) == 0:
-                continue
+                # Result:
+                #
+                # ["P0001", "P0002", "P0004"]
+                #
+                # P0003 has been removed because P0003 cannot
+                # refer to itself.
+
+
+            # ========================================================
+            # STEP 9
+            # Randomly select one provider to receive the referral.
+            # ========================================================
+
+            # At this point, possible_targets contains the providers
+            # that the CURRENT provider is allowed to refer to.
+            #
+            # We randomly select one of them.
 
             referred_provider_id = random_choice(
                 possible_targets
             )
+
+
+            # ========================================================
+            # STEP 10
+            # Record the referral.
+            # ========================================================
+
+            # We create a dictionary representing one relationship:
+            #
+            #     provider_id
+            #           |
+            #           | REFERS_TO
+            #           v
+            #     referred_provider_id
+            #
+            # For example:
+            #
+            # {
+            #     "provider_id": "P0001",
+            #     "referred_provider_id": "P0003"
+            # }
 
             referrals.append(
                 {
@@ -464,7 +795,39 @@ def simulate_provider_referrals(providers):
                 }
             )
 
-    return pd.DataFrame(referrals).drop_duplicates()
+
+    # ================================================================
+    # STEP 11
+    # Convert our list of dictionaries into a DataFrame.
+    # ================================================================
+
+    referrals = pd.DataFrame(referrals)
+
+
+    # ================================================================
+    # STEP 12
+    # Remove duplicate relationships.
+    # ================================================================
+
+    # It is possible that the random simulation created:
+    #
+    #     P0001 -> P0003
+    #
+    # more than once.
+    #
+    # We only need one record for that relationship.
+    #
+    # drop_duplicates() removes repeated rows.
+
+    referrals = referrals.drop_duplicates()
+
+
+    # ================================================================
+    # STEP 13
+    # Return the completed referral table.
+    # ================================================================
+
+    return referrals
 
 
 # ---------------------------------------------------------------------------
