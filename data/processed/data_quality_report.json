@@ -1,0 +1,71 @@
+{
+    "datasets": {
+        "claimants": {
+            "row_count": 2000,
+            "column_count": 1,
+            "columns": [
+                "claimant_id"
+            ],
+            "missing_values": {}
+        },
+        "employers": {
+            "row_count": 300,
+            "column_count": 1,
+            "columns": [
+                "employer_id"
+            ],
+            "missing_values": {}
+        },
+        "providers": {
+            "row_count": 200,
+            "column_count": 2,
+            "columns": [
+                "provider_id",
+                "is_fraud"
+            ],
+            "missing_values": {}
+        },
+        "treatments": {
+            "row_count": 20,
+            "column_count": 2,
+            "columns": [
+                "treatment_id",
+                "treatment_type"
+            ],
+            "missing_values": {}
+        },
+        "claims": {
+            "row_count": 2600,
+            "column_count": 7,
+            "columns": [
+                "claim_id",
+                "claimant_id",
+                "employer_id",
+                "provider_id",
+                "treatment_id",
+                "claim_amount",
+                "is_fraud"
+            ],
+            "missing_values": {}
+        },
+        "provider_referrals": {
+            "row_count": 512,
+            "column_count": 2,
+            "columns": [
+                "provider_id",
+                "referred_provider_id"
+            ],
+            "missing_values": {}
+        }
+    },
+    "summary": {
+        "total_claims": 2600,
+        "total_claim_amount": 10966365.49,
+        "average_claim_amount": 4217.8328807692305,
+        "fraudulent_claims": 100,
+        "claim_fraud_rate": 0.038461538461538464,
+        "total_providers": 200,
+        "flagged_providers": 5,
+        "provider_fraud_rate": 0.025
+    }
+}
