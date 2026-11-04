@@ -8,7 +8,7 @@ Our dataset contains 2,600 claims, of which 100 are fraudulent (3.85%).
 
 
   |Metric                |       Result |Interpretation
-  |--------------------- |------------------ |---------------------
+  |--------------------- |------------- |---------------------
   |Precision             |        8.15% |Only 8 out of 100 flagged claims are actually fraudulent.
   |Recall                |       11.00% |We identify only 11 of the 100 fraudulent claims.
   |Specificity           |       95.04% |We correctly leave 95% of legitimate claims unflagged.
