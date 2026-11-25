@@ -23,6 +23,37 @@ Prerequisites:
     - Constraints created by 00_create_constraints.py
     - NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD
       environment variables
+
+Expected graph structure:
+    After running the script, the graph will contain the following structure.
+
+    (:Claimant)
+        |
+    FILED
+        |
+    (:Claim)
+        |
+        +---- FILED_AGAINST ----> (:Employer)
+        |
+        +---- TREATED_BY -------> (:Provider)
+        |
+        +---- RECEIVED_TREATMENT -> (:Treatment)
+
+
+    (:Provider)
+        |
+    REFERRED
+        |
+    (:Provider)
+
+A couple of implementation notes:
+    1. Idempotency: Running this script multiple times won't create duplicate nodes or relationships, 
+        assuming the uniqueness constraints are in place.
+    2. Batching: Records are submitted in batches of 1,000, avoiding individual database writes.
+    3. Missing relationships: If a referenced entity doesn't exist, the corresponding relationship is 
+        simply not created. This is preferable to creating incomplete graph structures.
+    4. Relationship properties: We can introduce treatment dates, referral dates, and sequence 
+        information as the project evolves.
 """
 
 import csv
@@ -205,39 +236,43 @@ def load_claim_relationships(session):
     records = prepare_records(read_csv("claims.csv"))
 
     relationships = [
-        (
-            """
-            MATCH (claimant:Claimant {claimant_id: row.claimant_id})
-            MATCH (claim:Claim {claim_id: row.claim_id})
-            MERGE (claimant)-[:FILED]->(claim)
-            """,
-            "Claimant -> Claim"
-        ),
-        (
-            """
-            MATCH (claim:Claim {claim_id: row.claim_id})
-            MATCH (employer:Employer {employer_id: row.employer_id})
-            MERGE (claim)-[:FILED_AGAINST]->(employer)
-            """,
-            "Claim -> Employer"
-        ),
-        (
-            """
-            MATCH (claim:Claim {claim_id: row.claim_id})
-            MATCH (provider:Provider {provider_id: row.provider_id})
-            MERGE (claim)-[:TREATED_BY]->(provider)
-            """,
-            "Claim -> Provider"
-        ),
-        (
-            """
-            MATCH (claim:Claim {claim_id: row.claim_id})
-            MATCH (treatment:Treatment {treatment_id: row.treatment_id})
-            MERGE (claim)-[:RECEIVED_TREATMENT]->(treatment)
-            """,
-            "Claim -> Treatment"
-        )
-    ]
+    (
+        """
+        UNWIND $records AS row
+        MATCH (claimant:Claimant {claimant_id: row.claimant_id})
+        MATCH (claim:Claim {claim_id: row.claim_id})
+        MERGE (claimant)-[:FILED]->(claim)
+        """,
+        "Claimant -> Claim"
+    ),
+    (
+        """
+        UNWIND $records AS row
+        MATCH (claim:Claim {claim_id: row.claim_id})
+        MATCH (employer:Employer {employer_id: row.employer_id})
+        MERGE (claim)-[:FILED_AGAINST]->(employer)
+        """,
+        "Claim -> Employer"
+    ),
+    (
+        """
+        UNWIND $records AS row
+        MATCH (claim:Claim {claim_id: row.claim_id})
+        MATCH (provider:Provider {provider_id: row.provider_id})
+        MERGE (claim)-[:TREATED_BY]->(provider)
+        """,
+        "Claim -> Provider"
+    ),
+    (
+        """
+        UNWIND $records AS row
+        MATCH (claim:Claim {claim_id: row.claim_id})
+        MATCH (treatment:Treatment {treatment_id: row.treatment_id})
+        MERGE (claim)-[:RECEIVED_TREATMENT]->(treatment)
+        """,
+        "Claim -> Treatment"
+    )
+]
 
     for query, description in relationships:
         execute_batch(session, query, records)
